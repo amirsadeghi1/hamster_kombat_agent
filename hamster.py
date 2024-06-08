@@ -204,25 +204,31 @@ def buy_upgrade(token, upgrade_id, upgrade_name):
 
 
 def auto_upgrade_passive_earn(token):
-    attempts = 0
-    while attempts < 3:
+    MAX_ATTEMPTS = 3
+    ATTEMPT_DELAY = 1  # Delay in seconds between attempts
+
+    for attempt in range(MAX_ATTEMPTS):
         upgrades = get_available_upgrades(token)
-        if not upgrades:  # Check if the upgrade list is empty
-            print(Fore.RED + Style.BRIGHT + f"\r[ Upgrade Minning ] : No upgrades available or failed to get upgrade list.", flush=True)
-            attempts += 1
-            time.sleep(1)  # Please wait a moment before trying again
+        
+        if not upgrades:
+            print(Fore.RED + Style.BRIGHT + "\r[ Upgrade Mining ] : No upgrades available or failed to get upgrade list.", flush=True)
+            time.sleep(ATTEMPT_DELAY)
             continue
+        
         for upgrade in upgrades:
             if upgrade['isAvailable'] and not upgrade['isExpired']:
-                print(Fore.YELLOW + Style.BRIGHT + f"[ Upgrade Minning ] : {upgrade['name']} | Harga: {upgrade['price']} | Profit: {upgrade['profitPerHour']} / Jam ")
-                print(Fore.CYAN + Style.BRIGHT + f"\r[ Upgrade Minning ] : Upgrading {upgrade['name']}", end="", flush=True)
+                print(Fore.YELLOW + Style.BRIGHT + f"[ Upgrade Mining ] : {upgrade['name']} | Price: {upgrade['price']} | Profit: {upgrade['profitPerHour']} / Hour ")
+                print(Fore.CYAN + Style.BRIGHT + f"\r[ Upgrade Mining ] : Upgrading {upgrade['name']}", end="", flush=True)
+                
                 result = buy_upgrade(token, upgrade['id'], upgrade['name'])
+                
                 if result == 'insufficient_funds':
-                    if lanjut_upgrade == 'n':
-                        print(Fore.RED + Style.BRIGHT + f"\rSwitch to the next account\n\n", flush=True)
-                        return
-                    
-        return  # Exit the function if the upgrade is successful
+                    print(Fore.RED + Style.BRIGHT + "\r[ Upgrade Mining ] : Insufficient funds. Switching to the next account.\n", flush=True)
+                    return
+                
+                # If upgrade is successful, exit the function
+                return
+        
     print(Fore.RED + Style.BRIGHT + "\rFailed to upgrade after 3 attempts.", flush=True)
 
  
