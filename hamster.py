@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from itertools import cycle
 from colorama import init, Fore, Style
+import logging
 
 # Initialize colorama
 init(autoreset=True)
@@ -277,126 +278,126 @@ def main():
             # Sync Clicker
             print(Fore.GREEN + f"\rGetting info user...", end="", flush=True)
             response = sync_clicker(token)
-            if response.status_code == 200:
-                clicker_data = response.json()['clickerUser']
-                print(Fore.YELLOW + Style.BRIGHT + f"\r[ Level ] : {clicker_data['level']}          ", flush=True)
-                print(Fore.YELLOW + Style.BRIGHT + f"[ Total Earned ] : {int(clicker_data['totalCoins'])}")
-                print(Fore.YELLOW + Style.BRIGHT + f"[ Coin ] : {int(clicker_data['balanceCoins'])}")
-                print(Fore.YELLOW + Style.BRIGHT + f"[ Energy ] : {clicker_data['availableTaps']}")
-                boosts = clicker_data['boosts']
-                boost_max_taps_level = boosts.get('BoostMaxTaps', {}).get('level', 0)
-                boost_earn_per_tap_level = boosts.get('BoostEarnPerTap', {}).get('level', 0)
-                
-                print(Fore.CYAN + Style.BRIGHT + f"[ Level Energy ] : {boost_max_taps_level}")
-                print(Fore.CYAN + Style.BRIGHT + f"[ Level Tap ] : {boost_earn_per_tap_level}")
-                print(Fore.CYAN + Style.BRIGHT + f"[ Exchange ] : {clicker_data['exchangeId']}")
 
-                if clicker_data['exchangeId'] == None:
-                    print(Fore.GREEN + '\rSeting exchange to OKX..',end="", flush=True)
+
+            # Initialize logging
+            logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+            def log_colored(message, color, style=Style.BRIGHT, end='\n', flush=True):
+                logging.info(color + style + message, extra={'end': end, 'flush': flush})
+
+            def check_and_log(response, message):
+                if response.status_code == 200:
+                    log_colored(message, Fore.GREEN)
+                else:
+                    log_colored(f"{message} failed", Fore.RED)
+
+            def handle_exchange(clicker_data, token):
+                if clicker_data['exchangeId'] is None:
+                    log_colored('Setting exchange to OKX..', Fore.GREEN, end="", flush=True)
                     exchange_set = exchange(token)
+                    check_and_log(exchange_set, 'Successfully set exchange to OKEx')
 
-                    if exchange_set.status_code == 200:
-                        print(Fore.GREEN + Style.BRIGHT +'\rSuccessfully set exchange to OKEx', flush=True)
+            def claim_cipher_if_needed(token, cipher_text, claimed_ciphers):
+                if token not in claimed_ciphers:
+                    log_colored('Claiming cipher...', Fore.GREEN, end="", flush=True)
+                    response = claim_cipher(token, cipher_text)
+                    if response.status_code == 200:
+                        bonuscoins = response.json()['dailyCipher']['bonusCoins']
+                        log_colored(f'Successfully claimed cipher | {bonuscoins} bonus coins', Fore.GREEN)
+                        claimed_ciphers.add(token)
                     else:
-                        print(Fore.RED + Style.BRIGHT +'\rFailed to set exchange', flush=True)
-                print(Fore.CYAN + Style.BRIGHT + f"[ Passive Earn ] : {clicker_data['earnPassivePerHour']}\n")
-                print(Fore.GREEN + f"\r[ Tap Status ] : Tapping ...", end="", flush=True)
+                        error_info = response.json() if response else {}
+                        if error_info.get('error_code') == 'DAILY_CIPHER_DOUBLE_CLAIMED':
+                            log_colored('Cipher already claimed', Fore.RED)
+                        else:
+                            log_colored('Failed to claim cipher', Fore.RED)
 
+            def upgrade_feature_if_needed(token, feature, feature_name):
+                log_colored(f'Upgrading {feature_name}...', Fore.GREEN, end="", flush=True)
+                upgrade_response = upgrade(token, feature)
+                if upgrade_response.status_code == 200:
+                    level = upgrade_response.json()['clickerUser']['boosts'][feature]['level']
+                    log_colored(f'{feature_name} upgraded to level {level}', Fore.GREEN)
+                else:
+                    log_colored(f'Failed to upgrade {feature_name}', Fore.RED)
 
+            def list_tasks_if_needed(token, cek_task_dict):
+                if token not in cek_task_dict:
+                    cek_task_dict[token] = False
+                if not cek_task_dict[token]:
+                    response = list_tasks(token)
+                    cek_task_dict[token] = True
+                    if response.status_code == 200:
+                        tasks = response.json()['tasks']
+                        all_completed = all(task['isCompleted'] or task['id'] == 'invite_friends' for task in tasks)
+                        if all_completed:
+                            log_colored('All tasks unclaimed', Fore.GREEN)
+                        else:
+                            for task in tasks:
+                                if not task['isCompleted']:
+                                    log_colored(f'Claiming {task["id"]}...', Fore.YELLOW, end="", flush=True)
+                                    response = check_task(token, task['id'])
+                                    if response.status_code == 200 and response.json()['task']['isCompleted']:
+                                        log_colored(f'Claimed {task["id"]}', Fore.GREEN)
+                                    else:
+                                        log_colored(f'Failed to claim {task["id"]}', Fore.RED)
+                    else:
+                        log_colored('Failed to get task list', Fore.RED)
+                else:
+                    log_colored('Skipped task list check', Fore.GREEN)
+
+            def process_clicker_data(clicker_data, token, claimed_ciphers, cipher_text, auto_upgrade_energy, auto_upgrade_multitap, cek_task_list, cek_task_dict, auto_upgrade_passive):
+                log_colored(f"[ Level ] : {clicker_data['level']}", Fore.YELLOW)
+                log_colored(f"[ Total Earned ] : {int(clicker_data['totalCoins'])}", Fore.YELLOW)
+                log_colored(f"[ Coin ] : {int(clicker_data['balanceCoins'])}", Fore.YELLOW)
+                log_colored(f"[ Energy ] : {clicker_data['availableTaps']}", Fore.YELLOW)
+                
+                boosts = clicker_data['boosts']
+                log_colored(f"[ Level Energy ] : {boosts.get('BoostMaxTaps', {}).get('level', 0)}", Fore.CYAN)
+                log_colored(f"[ Level Tap ] : {boosts.get('BoostEarnPerTap', {}).get('level', 0)}", Fore.CYAN)
+                log_colored(f"[ Exchange ] : {clicker_data['exchangeId']}", Fore.CYAN)
+                log_colored(f"[ Passive Earn ] : {clicker_data['earnPassivePerHour']}\n", Fore.CYAN)
+                log_colored("[ Tap Status ] : Tapping ...", Fore.GREEN, end="", flush=True)
+
+                handle_exchange(clicker_data, token)
 
                 response = tap(token, clicker_data['maxTaps'], clicker_data['availableTaps'])
-                if response.status_code == 200:
-                    print(Fore.GREEN + Style.BRIGHT + "\r[ Tap Status ] : Tapped            ", flush=True)
-                else:
-                    print(Fore.RED + Style.BRIGHT + "\r[ Tap Status ] : Failed Tap           ", flush=True)
-                    # Continue 
-                print(Fore.GREEN + f"\r[ Checkin Daily ] : Checking...", end="", flush=True)
+                check_and_log(response, "[ Tap Status ] : Tapped")
 
+                log_colored("[ Checkin Daily ] : Checking...", Fore.GREEN, end="", flush=True)
                 time.sleep(1)
-                # Check Task
                 response = claim_daily(token)
                 if response.status_code == 200:
                     daily_response = response.json()['task']
                     if daily_response['isCompleted']:
-                        print(Fore.GREEN + Style.BRIGHT + f"\r[ Checking Daily ] Days {daily_response['days']} | Completed", flush=True)
+                        log_colored(f"[ Checking Daily ] Days {daily_response['days']} | Completed", Fore.GREEN)
                     else:
-                        print(Fore.RED + Style.BRIGHT + f"\r[ Checking Daily ] Days {daily_response['days']} | It's not time to claim daily yet", flush=True)
+                        log_colored(f"[ Checking Daily ] Days {daily_response['days']} | It's not time to claim daily yet", Fore.RED)
                 else:
-                    print(Fore.RED + Style.BRIGHT + f"\r[ Checkin Daily ] Failed daily check {response.status_code}", flush=True)
-                
+                    log_colored(f"[ Checkin Daily ] Failed daily check {response.status_code}", Fore.RED)
+
                 if ask_cipher == 'y':
-                    if token not in claimed_ciphers:
-                        print(Fore.GREEN + Style.BRIGHT + f"\r[ Claim Cipher ] : Claiming cipher...", end="", flush=True)
-                        response = claim_cipher(token, cipher_text)
-                        if response.status_code == 200:
-                            bonuscoins = response.json()['dailyCipher']['bonusCoins']
-                            print(Fore.GREEN + Style.BRIGHT + f"\r[ Claim Cipher ] : Successfully claim cipher | {bonuscoins} bonus coin", flush=True)
-                            claimed_ciphers.add(token)
-                        else:
-                            if response is not None:
-                                error_info = response.json()
-                                if error_info.get('error_code') == 'DAILY_CIPHER_DOUBLE_CLAIMED':
-                                    print(Fore.RED + Style.BRIGHT + f"\r[ Claim Cipher ] : Cipher already claimed", flush=True)
-                            else:
-                                print(Fore.RED + Style.BRIGHT + f"\r[ Claim Cipher ] : Failed to claim cipher {response}", flush=True)
-                    else:
-                            print(Fore.RED + Style.BRIGHT + f"\r[ Claim Cipher ] : Failed to claim cipher {response}", flush=True)
+                    claim_cipher_if_needed(token, cipher_text, claimed_ciphers)
 
-                # Upgrade 
                 if auto_upgrade_energy == 'y':
-                    print(Fore.GREEN + f"\r[ Upgrade ] : Upgrading Energy....", end="", flush=True)
-                    upgrade_response = upgrade(token, "BoostMaxTaps")
-                    if upgrade_response.status_code == 200:
-                        level_boostmaxtaps = upgrade_response.json()['clickerUser']['boosts']['BoostMaxTaps']['level']
-                        print(Fore.GREEN + Style.BRIGHT + f"\r[ Upgrade ] : Energy Upgrade to level {level_boostmaxtaps}", flush=True)
-                    else:
-                        print(Fore.RED + Style.BRIGHT + "\r[ Upgrade ] : Failed to upgrade energy", flush=True)
+                    upgrade_feature_if_needed(token, "BoostMaxTaps", "Energy")
+
                 if auto_upgrade_multitap == 'y':
-                    print(Fore.GREEN + f"\r[ Upgrade ] : Upgrading MultiTap....", end="", flush=True)
-                    upgrade_response = upgrade(token, "BoostEarnPerTap")
-                    if upgrade_response.status_code == 200:
-                        level_boostearnpertap = upgrade_response.json()['clickerUser']['boosts']['BoostEarnPerTap']['level']
-                        print(Fore.GREEN + Style.BRIGHT + f"\r[ Upgrade ] : MultiTap Upgrade to level {level_boostearnpertap}", flush=True)
-                    else:
-                        print(Fore.RED + Style.BRIGHT + "\r[ Upgrade ] : Failed to upgrade multitap", flush=True)
-            
-                # List Tasks
-                print(Fore.GREEN + f"\r[ List Task ] : Checking...", end="", flush=True)
+                    upgrade_feature_if_needed(token, "BoostEarnPerTap", "MultiTap")
+
                 if cek_task_list == 'y':
-                    if token not in cek_task_dict:  # Make sure the token is in the dictionary
-                        cek_task_dict[token] = False  # Initialize if not already exists
-                    if not cek_task_dict[token]:  # Check the status of the cek_task for this token
-                        response = list_tasks(token)
-                        cek_task_dict[token] = True  # Set cek_task status to True after checking
-                        if response.status_code == 200:
-                            tasks = response.json()['tasks']
-                            all_completed = all(task['isCompleted'] or task['id'] == 'invite_friends' for task in tasks)
-                            if all_completed:
-                                print(Fore.GREEN + Style.BRIGHT + "\r[ List Task ] : All unclaimed\n", flush=True)
-                            else:
-                                for task in tasks:
-                                    if not task['isCompleted']:
-                                        print(Fore.YELLOW + Style.BRIGHT + f"\r[ List Task ] : Claiming {task['id']}...", end="", flush=True)
-                                        response = check_task(token, task['id'])
-                                        if response.status_code == 200 and response.json()['task']['isCompleted']:
-                                            print(Fore.GREEN + Style.BRIGHT + f"\r[ List Task ] : Claimed {task['id']}\n", flush=True)
-                                        else:
-                                            print(Fore.RED + Style.BRIGHT + f"\r[ List Task ] : Gagal Claim {task['id']}\n", flush=True)
-                        else:
-                            print(Fore.RED + Style.BRIGHT + f"\r[ List Task ] : Failed to get task list {response.status_code}\n", flush=True)
-                else:
-                    print(Fore.GREEN + f"\r[ List Task ] : Skipped...", end="", flush=True)   
-                    
-                # check upgrade
-                
+                    list_tasks_if_needed(token, cek_task_dict)
+
                 if auto_upgrade_passive == 'y':
-                    print(Fore.GREEN + f"\r[ Upgrade Minning ] : Checking...", end="", flush=True)
+                    log_colored("[ Upgrade Minning ] : Checking...", Fore.GREEN, end="", flush=True)
                     auto_upgrade_passive_earn(token)
-                    
+
+            if response.status_code == 200:
+                clicker_data = response.json()['clickerUser']
+                process_clicker_data(clicker_data, token, claimed_ciphers, cipher_text, auto_upgrade_energy, auto_upgrade_multitap, cek_task_list, cek_task_dict, auto_upgrade_passive)
             else:
-
-
-                print(Fore.RED + Style.BRIGHT + f"\r Failed to get user info {response.status_code}", flush=True)
+                log_colored(f"Failed to get user info {response.status_code}", Fore.RED)
 
 
 
